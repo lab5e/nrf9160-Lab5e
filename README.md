@@ -25,6 +25,12 @@ west update
 
 The folder nrf9160-Lab5e should now appear under ncs\<toolchain version>\nrf\applications
 
+# Samples
+
+* [Hello World](https://github.com/lab5e/nrf9160-Lab5e/tree/master/samples/hello_world)
+* [COAP](https://github.com/lab5e/nrf9160-Lab5e/tree/master/samples/coap)
+* [FOTA](https://github.com/lab5e/nrf9160-Lab5e/tree/master/samples/fota)
+
 
 
 
