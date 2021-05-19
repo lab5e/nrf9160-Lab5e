@@ -1,3 +1,21 @@
+/*
+	Copyright [2019] [Exploratory Engineering]
+	Modifications Copyright [2021] [Lab5e AS]
+
+   Licensed under the Apache License, Version 2.0 (the "License");
+   you may not use this file except in compliance with the License.
+   You may obtain a copy of the License at
+
+       http://www.apache.org/licenses/LICENSE-2.0
+
+   Unless required by applicable law or agreed to in writing, software
+   distributed under the License is distributed on an "AS IS" BASIS,
+   WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+   See the License for the specific language governing permissions and
+   limitations under the License.#include <zephyr.h>
+*/   
+//#include <zephyr.h>
+#include <zephyr/types.h>
 #include <zephyr.h>
 
 #include <logging/log.h>
@@ -6,6 +24,8 @@
 #include <net/net_ip.h>
 #include <net/udp.h>
 #include <net/coap.h>
+#include <random/rand32.h>
+#include <sys_clock.h>
 
 #include "coap.h"
 
@@ -21,8 +41,8 @@ typedef struct {
 	struct coap_packet packet;
 	struct sockaddr addr;
 	socklen_t addr_len;
-	u8_t retransmission_count;
-	s32_t timeout, deadline;
+	uint8_t retransmission_count;
+	int timeout, deadline;
 
 	coap_response_handler response_handler;
 	void *response_handler_data;
@@ -49,7 +69,7 @@ typedef struct {
 
 typedef struct {
 	void *fifo_reserved;
-	u8_t data[MAX_COAP_MSG_LEN];
+	uint8_t data[MAX_COAP_MSG_LEN];
 	struct coap_packet packet;
 	struct coap_option options[MAX_COAP_OPTIONS];
 	struct sockaddr addr;
@@ -108,7 +128,7 @@ static inflight_packet *new_inflight_packet(coap_endpoint *ep, packet_tx_data_it
 		inflight->addr = tx->addr;
 		inflight->addr_len = tx->addr_len;
 		inflight->retransmission_count = 0;
-		inflight->timeout = K_SECONDS(2) + sys_rand32_get() % K_SECONDS(1);
+		inflight->timeout = 2 * MSEC_PER_SEC  + sys_rand32_get()  % MSEC_PER_SEC;
 		inflight->deadline = k_uptime_get_32() + inflight->timeout;
 	}
 	inflight->response_handler = tx->response_handler;
@@ -143,24 +163,24 @@ static inflight_packet *next_retransmission(coap_endpoint *ep) {
 #define COAP_CODE_CLASS_MASK (7<<5)
 
 static bool is_request(const struct coap_packet *p) {
-	u8_t code = coap_header_get_code(p);
+	uint8_t code = coap_header_get_code(p);
 	return (code & COAP_CODE_CLASS_MASK) == 0 && code != COAP_CODE_EMPTY;
 }
 
 static bool is_response(const struct coap_packet *p) {
-	u8_t code = coap_header_get_code(p);
+	uint8_t code = coap_header_get_code(p);
 	return (code & COAP_CODE_CLASS_MASK) != 0;
 }
 
 // get_inflight_packet searches for an inflight packet that has a matching address and a matching id or token.
 static inflight_packet *get_inflight_packet(coap_endpoint *ep, packet_rx_data_item *rx) {
-	u16_t id = coap_header_get_id(&rx->packet);
-	u8_t token[8];
-	u8_t token_len = coap_header_get_token(&rx->packet, token);
+	uint16_t id = coap_header_get_id(&rx->packet);
+	uint8_t token[8];
+	uint8_t token_len = coap_header_get_token(&rx->packet, token);
 
 	for (size_t i = 0; i < ep->inflight_packets_len; i++) {
 		inflight_packet *inflight = &ep->inflight_packets[i];
-		u8_t tok[8];
+		uint8_t tok[8];
 		bool addrs_equal = inflight->addr_len == rx->addr_len && memcmp(&inflight->addr, &rx->addr, rx->addr_len) == 0;
 		bool ids_equal = coap_header_get_id(&inflight->packet) == id;
 		bool tokens_equal = coap_header_get_token(&inflight->packet, tok) == token_len && memcmp(tok, token, token_len) == 0;
@@ -202,7 +222,7 @@ static void retransmit_packet(coap_endpoint *ep, inflight_packet *inflight) {
 	inflight->timeout *= 2;
 	inflight->deadline += inflight->timeout;
 
-	const u8_t max_retransmission_count = 4;
+	const uint8_t max_retransmission_count = 4;
 	if (inflight->retransmission_count > max_retransmission_count) {
 		inflight->response_handler(inflight->response_handler_data, -EAGAIN, NULL);
 		free_inflight_packet(ep, inflight);
@@ -302,10 +322,10 @@ static void txrx_thread(void *p1, void *p2, void *p3) {
 	};
 
 	while (true) {
-		s32_t timeout = K_FOREVER;
+		k_timeout_t timeout = K_FOREVER;
 		inflight_packet *retransmission = next_retransmission(ep);
 		if (retransmission != NULL) {
-			timeout = retransmission->deadline - k_uptime_get_32();
+			timeout = K_TIMEOUT_ABS_MS(retransmission->deadline - k_uptime_get_32());
 		}
 
 		int ret = k_poll(events, sizeof(events)/sizeof(struct k_poll_event), timeout);
@@ -405,7 +425,7 @@ void post_handler(void *p, int err, struct coap_packet *response) {
 	k_sem_give(&data->sem);
 }
 
-int coap_endpoint_post(coap_endpoint *ep, struct sockaddr *addr, socklen_t addr_len, const char *const *path, u8_t *payload, int payload_len) {
+int coap_endpoint_post(coap_endpoint *ep, struct sockaddr *addr, socklen_t addr_len, const char *const *path, uint8_t *payload, int payload_len) {
 	post_handler_data post_handler_data = {
 		ep: ep,
 		addr: addr,
@@ -423,8 +443,8 @@ int coap_endpoint_post(coap_endpoint *ep, struct sockaddr *addr, socklen_t addr_
 	return post_handler_data.ret;
 }
 
-int coap_endpoint_post_async(coap_endpoint *ep, struct sockaddr *addr, socklen_t addr_len, const char *const *path, u8_t *payload, int payload_len, coap_response_handler response_handler, void *response_handler_data) {
-	u8_t *data = k_calloc(1, MAX_COAP_MSG_LEN);
+int coap_endpoint_post_async(coap_endpoint *ep, struct sockaddr *addr, socklen_t addr_len, const char *const *path, uint8_t *payload, int payload_len, coap_response_handler response_handler, void *response_handler_data) {
+	uint8_t *data = k_calloc(1, MAX_COAP_MSG_LEN);
 	if (!data) {
 		return -ENOMEM;
 	}
@@ -487,7 +507,7 @@ int coap_endpoint_acknowledge(coap_endpoint *ep, struct coap_packet *packet, str
 	}
 
 	struct coap_packet ack;
-	u8_t data[4];
+	uint8_t data[4];
 	int err = coap_packet_init(&ack, data, sizeof(data), 1, COAP_TYPE_ACK, 0, NULL, COAP_CODE_EMPTY, coap_header_get_id(packet));
 	if (err < 0) {
 		LOG_ERR("coap_packet_init: %d", err);
@@ -509,7 +529,7 @@ int coap_endpoint_reset(coap_endpoint *ep, struct coap_packet *packet, struct so
 	}
 
 	struct coap_packet reset;
-	u8_t data[4];
+	uint8_t data[4];
 	int err = coap_packet_init(&reset, data, sizeof(data), 1, COAP_TYPE_RESET, 0, NULL, COAP_CODE_EMPTY, coap_header_get_id(packet));
 	if (err < 0) {
 		LOG_ERR("coap_packet_init: %d", err);
@@ -524,14 +544,14 @@ int coap_endpoint_reset(coap_endpoint *ep, struct coap_packet *packet, struct so
 	return 0;
 }
 
-int coap_endpoint_respond(coap_endpoint *ep, struct coap_packet *request, enum coap_response_code code, u8_t *payload, u16_t payload_len, struct sockaddr *addr, socklen_t addr_len) {
+int coap_endpoint_respond(coap_endpoint *ep, struct coap_packet *request, enum coap_response_code code, uint8_t *payload, uint16_t payload_len, struct sockaddr *addr, socklen_t addr_len) {
 	struct coap_packet response;
-	u8_t data[MAX_COAP_MSG_LEN];
-	u8_t type = COAP_TYPE_ACK;
+	uint8_t data[MAX_COAP_MSG_LEN];
+	uint8_t type = COAP_TYPE_ACK;
 	if (coap_header_get_type(request) == COAP_TYPE_NON_CON) {
 		type = COAP_TYPE_NON_CON;
 	}
-	u8_t token[8];
+	uint8_t token[8];
 	int err = coap_packet_init(&response, data, sizeof(data), 1, type, coap_header_get_token(request, token), token, code, coap_header_get_id(request));
 	if (err < 0) {
 		LOG_ERR("coap_packet_init: %d", err);

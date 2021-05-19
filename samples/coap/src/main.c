@@ -1,3 +1,20 @@
+/*
+	Copyright [2019] [Exploratory Engineering]
+	Modifications Copyright [2021] [Lab5e AS]
+
+   Licensed under the Apache License, Version 2.0 (the "License");
+   you may not use this file except in compliance with the License.
+   You may obtain a copy of the License at
+
+       http://www.apache.org/licenses/LICENSE-2.0
+
+   Unless required by applicable law or agreed to in writing, software
+   distributed under the License is distributed on an "AS IS" BASIS,
+   WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+   See the License for the specific language governing permissions and
+   limitations under the License.#include <zephyr.h>
+*/   
+
 #include <zephyr.h>
 #include <logging/log.h>
 
@@ -8,10 +25,10 @@ LOG_MODULE_REGISTER(app_main, CONFIG_APP_LOG_LEVEL);
 static int message_post(struct coap_resource *resource, struct coap_packet *request, struct sockaddr *addr, socklen_t addr_len) {
 	coap_endpoint *coap = resource->user_data;
 
-	u16_t payload_len;
-	const u8_t *payload = coap_packet_get_payload(request, &payload_len);
+	uint16_t payload_len;
+	const uint8_t *payload = coap_packet_get_payload(request, &payload_len);
 
-	u8_t *buf = k_calloc(payload_len + 1, 1);
+	uint8_t *buf = k_calloc(payload_len + 1, 1);
 	memcpy(buf, payload, payload_len);
 	LOG_INF("Received CoAP POST: %s", log_strdup(buf));
 	k_free(buf);
@@ -52,7 +69,7 @@ void main() {
 		.sin_port = htons(5683),
 	};
 	net_addr_pton(AF_INET, "172.16.15.14", &remote_addr.sin_addr);
-	u8_t *msg = "Hello!";
+	uint8_t *msg = "Hello!";
 	const char * const path[] = { "straight", "and", "narrow", NULL };
 	int ret = coap_endpoint_post(coap, (struct sockaddr *)&remote_addr, sizeof(remote_addr), path, msg, strlen(msg));
 	if (ret != COAP_RESPONSE_CODE_CREATED) {

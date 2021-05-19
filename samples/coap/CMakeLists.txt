@@ -1,12 +1,9 @@
 cmake_minimum_required(VERSION 3.13.1)
 
-if(NOT DEFINED BOARD)
-  set(BOARD nrf9160_pca10090ns)
-endif()
-
-include($ENV{ZEPHYR_BASE}/cmake/app/boilerplate.cmake NO_POLICY_SCOPE)
-project(telenor_fota)
+find_package(Zephyr REQUIRED HINTS $ENV{ZEPHYR_BASE})
+project(lab5e_coap)
 
 target_sources(app PRIVATE src/main.c)
 target_sources(app PRIVATE src/coap.c)
 zephyr_include_directories(src)
+
