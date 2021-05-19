@@ -2,7 +2,7 @@
 
 Open the toolchain manager from nRFConnect and open a shell for the selected toolchain
 
-## Hello World
+## Manifest
 1) Open west.yml and add the following lines in the remotes section:
 
 ```bash

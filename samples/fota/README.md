@@ -1,43 +1,38 @@
 # Firmware over the air (FOTA)
 
-Before deploying a device into the field, you probably want to have a way to update it without someone having to manually get to the device and install a new firmware change. The [Telenor IoT Gateway](https://nbiot.engineering/) has implemented the firmware update part of LwM2M standard to simplify the process of firmware updates. This sample implements the minimum of what you need on the device side to do a firwmare update over the air. Full details of [how to do a firmware update is documented on our blog](https://blog.exploratory.engineering/post/something-in-the-air/).
+Before deploying a device into the field, you probably want to have a way to update it without someone having to manually get to the device and install a new firmware change. [Span](https://span.lab5e.com/) has implemented the firmware update part of LwM2M standard to simplify the process of firmware updates. This sample implements the minimum of what you need on the device side to do a firwmare update over the air. .
 
 ## Prerequisites
 
 Please make sure you've followed [the instructions in the main README](../../README.md) to set up the build toolchain and register your device.
 
-## Clean build folder
-
-If you've already built another sample, you'll get build errors because the `build/` folder contains files from a different source directory. So we need to clean the `build/` folder before building a different sample.
-
-```sh
-# macOS/Linux clean old build folder
-rm -rf build # clean the build folder (in case you built hello_world first)
-
-# Windows clean old build folder
-rd /s /q build
-```
-
-Alternately, you can build each sample in its own directory; then their build folders will not collide.
 
 ## Build and run fota
-
-```sh
-cd samples/fota
-```
 
 First you have to generate a private key for signing the firmware images
 
 ```sh
-pipenv run imgtool keygen --key cert.pem --type rsa-2048
+imgtool keygen --key cert.pem --type rsa-2048
 ```
 
 Build the firmware and flash it to the device by running
 
-```sh
-pipenv run west build
-pipenv run west flash
+nRF9160DK:
+
+```bash
+west build nrf9160-Lab5e\samples\fota -b nrf9160dk_nrf9160ns -p
 ```
+
+Thingy91:
+
+```bash
+west build nrf9160-Lab5e\samples\fota -b thingy91_nrf9160ns -p
+```
+
+Flash the sample by running
+```bash
+west flash
+``````
 
 _Note: The default board is the nRF9160 Development Kit. If you want to build and upload to another nrf9160-based board, you have to add `-b <board-name>` for the build command above. So to build for the Thingy:91, the command would be: `west build -b nrf9160_pca20035ns samples/fota`_
 
@@ -48,7 +43,7 @@ rm -rf build  # unfortunately necessary, or Zephyr will not see the version chan
 pipenv run west build -- -DCONFIG_APP_FIRMWARE_VERSION=\"1.0.1\"
 ```
 
-Login to the [Telenor IoT Gateway](https://nbiot.engineering/) and go to the firmware tab for the collection your device is registered.
+Login to the [Span](https://span.lab5e.com/) and go to the firmware tab for the collection your device is registered.
 
 1. Choose «Device based management» as _Firmware management_ for the collection.
 

@@ -1,13 +1,30 @@
+/*
+	Copyright [2019] [Exploratory Engineering]
+	Modifications Copyright [2021] [Lab5e AS]
+
+   Licensed under the Apache License, Version 2.0 (the "License");
+   you may not use this file except in compliance with the License.
+   You may obtain a copy of the License at
+
+       http://www.apache.org/licenses/LICENSE-2.0
+
+   Unless required by applicable law or agreed to in writing, software
+   distributed under the License is distributed on an "AS IS" BASIS,
+   WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+   See the License for the specific language governing permissions and
+   limitations under the License.#include <zephyr.h>
+*/   
+
 #include <zephyr.h>
-#include <bsd.h>
 #include <logging/log.h>
 #include <dfu/mcuboot.h>
 #include <dfu/dfu_target.h>
 #include <power/reboot.h>
-#include <modem_info.h>
-#include <net/bsdlib.h>
+#include <modem/modem_info.h>
+#include <modem/nrf_modem_lib.h>
 #include <net/lwm2m.h>
 #include <stdio.h>
+#include <nrf_modem.h>
 
 #include "fota.h"
 
@@ -19,7 +36,8 @@ LOG_MODULE_REGISTER(app_fota, CONFIG_APP_LOG_LEVEL);
 
 static int check_modem_firmware_update() {
 	// Modem firmware updates require a second reboot.
-	int err = bsdlib_get_init_ret();
+	int err = nrf_modem_lib_init(NORMAL_MODE);
+
 	switch (err) {
 	case MODEM_DFU_RESULT_OK:
 		LOG_INF("Modem firmware update successful!");
@@ -51,7 +69,7 @@ static void do_reboot(struct k_work *work) {
 	sys_reboot(0);
 }
 
-static int firmware_update_cb(u16_t obj_inst_id) {
+static int firmware_update_cb(uint16_t obj_inst_id, uint8_t * args, uint16_t args_len) {
 	LOG_INF("Executing firmware update");
 
 	// Wait a few seconds before rebooting so that the lwm2m client has a chance
@@ -61,8 +79,8 @@ static int firmware_update_cb(u16_t obj_inst_id) {
 	return 0;
 }
 
-static void *firmware_get_buf(u16_t obj_inst_id, u16_t res_id, u16_t res_inst_id, size_t *data_len) {
-	static u8_t firmware_buf[CONFIG_LWM2M_COAP_BLOCK_SIZE];
+static void *firmware_get_buf(uint16_t obj_inst_id, uint16_t res_id, uint16_t res_inst_id, size_t *data_len) {
+	static uint8_t firmware_buf[CONFIG_LWM2M_COAP_BLOCK_SIZE];
 	*data_len = sizeof(firmware_buf);
 	return firmware_buf;
 }
@@ -80,8 +98,8 @@ static void dfu_target_callback_handler(enum dfu_target_evt_id evt) {
 	}
 }
 
-static int firmware_block_received_cb(u16_t obj_inst_id, u16_t res_id, u16_t res_inst_id,
-		u8_t *data, u16_t data_len, bool last_block, size_t total_size) {
+static int firmware_block_received_cb(uint16_t obj_inst_id, uint16_t res_id, uint16_t res_inst_id,
+		uint8_t *data, uint16_t data_len, bool last_block, size_t total_size) {
 	if (total_size > FLASH_BANK_SIZE) {
 		LOG_ERR("Artifact file size too big: %d", total_size);
 		return -EINVAL;
@@ -92,8 +110,8 @@ static int firmware_block_received_cb(u16_t obj_inst_id, u16_t res_id, u16_t res
 		return -EINVAL;
 	}
 
-	static u32_t bytes_downloaded;
-	static u8_t percent_downloaded;
+	static uint32_t bytes_downloaded;
+	static uint8_t percent_downloaded;
 
 	int ret;
 
@@ -132,7 +150,7 @@ static int firmware_block_received_cb(u16_t obj_inst_id, u16_t res_id, u16_t res
 
 	bytes_downloaded += data_len;
 
-	u8_t percent = 100;
+	uint8_t percent = 100;
 	if (total_size) {
 		percent = 100 * bytes_downloaded / total_size;
 	}
@@ -182,8 +200,8 @@ static int init_lwm2m_resources(fota_client_info client_info) {
 	LOG_INF("Manufacturer:     %s", client_info.manufacturer);
 
 	char *server_url;
-	u16_t server_url_len;
-	u8_t server_url_flags;
+	uint16_t server_url_len;
+	uint8_t server_url_flags;
 	int ret = lwm2m_engine_get_res_data("0/0/0", (void **)&server_url, &server_url_len, &server_url_flags);
 	if (ret) {
 		LOG_ERR("Error getting LwM2M server URL data: %d", ret);
@@ -237,8 +255,9 @@ static int init_endpoint_name() {
 		return err;
 	}
 
-	char imei[15] = {0};
-	int len = modem_info_string_get(MODEM_INFO_IMEI, imei);
+	const int DATA_BUF_SIZE=15;
+	char imei[DATA_BUF_SIZE];
+	int len = modem_info_string_get(MODEM_INFO_IMEI, imei, DATA_BUF_SIZE);
 	if (len <= 0) {
 		LOG_ERR("read IMEI: %d", len);
 		return len;
@@ -246,7 +265,7 @@ static int init_endpoint_name() {
 	snprintf(endpoint_name, sizeof(endpoint_name), "nrf-%s", imei);
 
 	char fw_version[MODEM_INFO_MAX_RESPONSE_SIZE] = {0};
-	len = modem_info_string_get(MODEM_INFO_FW_VERSION, fw_version);
+	len = modem_info_string_get(MODEM_INFO_FW_VERSION, fw_version, MODEM_INFO_MAX_RESPONSE_SIZE);
 	if (len <= 0) {
 		LOG_ERR("read firmware version: %d", len);
 		return len;
@@ -281,7 +300,11 @@ int fota_init(fota_client_info client_info) {
 	}
 
 	static struct lwm2m_ctx client;
-	lwm2m_rd_client_start(&client, endpoint_name, NULL);
+
+	uint32_t flags = IS_ENABLED(CONFIG_LWM2M_RD_CLIENT_SUPPORT_BOOTSTRAP) ?
+				LWM2M_RD_CLIENT_FLAG_BOOTSTRAP : 0;
+
+	lwm2m_rd_client_start(&client, endpoint_name, flags, NULL);
 
 	return 0;
 }
