@@ -1,6 +1,6 @@
 # Hello world
 
-This example prints the device IMSI and IMEI, connects to the mda.ee APN, and sends a simple message.
+This example prints the device IMSI and IMEI, connects to the mda.lab5e APN, and sends a simple message.
 
 ## Prerequisites
 
